@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Earnings Analysis Deck — HTML + Canvas (Self‑Contained)</title>
+  <style>
+    :root{
+      --bg:#0b0f16; --panel:#121826; --ink:#e6eefc; --muted:#9fb0cf; --accent:#5daeff; --accent2:#9f7aea; --good:#4ade80; --bad:#f87171; --warn:#fbbf24;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; background:linear-gradient(180deg,var(--bg),#0a1220 40%, #0b0f16); color:var(--ink); font:16px/1.45 system-ui,Segoe UI,Roboto,Inter,-apple-system,sans-serif; overflow:hidden}
+    a{color:var(--accent)}
+    .app{height:100%; display:flex; flex-direction:column}
+    header{display:flex; align-items:center; gap:.75rem; padding:.6rem 1rem; background:#0d1424; border-bottom:1px solid #161f33; position:relative; z-index:2}
+    header .title{font-weight:700; letter-spacing:.3px}
+    header .flex{flex:1}
+    header .btn{background:#18243c; border:1px solid #1d2a45; color:var(--ink); padding:.45rem .75rem; border-radius:.6rem; cursor:pointer}
+    header .btn:hover{filter:brightness(1.07)}
+    header input[type=file]{display:none}
+
+    .deck{position:relative; flex:1; display:grid; place-items:center;}
+    .slides{position:relative; width:min(1100px,92vw); height:min(640px,76vh); background:radial-gradient(1200px 800px at 80% -20%, #1a2440 0%, #131b2f 50%, #0f1627 100%); border-radius:22px; box-shadow:0 10px 40px rgba(0,0,0,.5), inset 0 0 0 1px #1f2b46; overflow:hidden}
+    .slide{position:absolute; inset:0; padding:46px 56px; display:flex; flex-direction:column; gap:24px; opacity:0; transform:translateX(60px) scale(.98); transition:opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1); pointer-events:none}
+    .slide.active{opacity:1; transform:translateX(0) scale(1); pointer-events:auto}
+    .slide h1{margin:0; font-size:44px}
+    .slide h2{margin:6px 0 0; font-size:22px; color:var(--muted); font-weight:500}
+    .grid{display:grid; gap:18px}
+    .grid.cols-2{grid-template-columns:1fr 1fr}
+    .card{background:rgba(14,20,36,.66); border:1px solid #1b2744; border-radius:16px; padding:16px 16px 14px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+    .card h3{margin:0 0 8px; font-size:18px; color:#cfe0ff}
+    .muted{color:var(--muted)}
+    .kpi{display:flex; align-items:baseline; gap:.6rem}
+    .kpi .v{font-size:32px; font-weight:700}
+    .kpi .d{font-size:14px}
+    .row{display:flex; gap:16px; align-items:center}
+
+    /* progress + footer */
+    .footer{position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:space-between; padding:10px 16px; color:#9fb0cf; font-size:13px; background:linear-gradient(0deg, #0d1424, transparent)}
+    .prog{height:4px; background:#1c2741; border-radius:999px; overflow:hidden; width:240px}
+    .prog .bar{height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); width:0%}
+
+    /* lists */
+    ul{margin:0; padding-left:20px}
+    li{margin:.35rem 0}
+
+    /* print / pdf */
+    @media print{
+      body{background:#fff}
+      header{display:none}
+      .deck{display:block}
+      .slides{width:100%; height:auto; border-radius:0; box-shadow:none}
+      .slide{position:relative; opacity:1 !important; transform:none !important; break-after:page; min-height:700px}
+      .footer{display:none}
+    }
+
+    /* tiny helper chips */
+    .chip{background:#1a2440; border:1px solid #213055; padding:.15rem .5rem; border-radius:.5rem; font-size:12px; color:#c8d7f5}
+
+    .editable{outline:1px dashed #33456f; border-radius:8px; padding:10px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">Earnings Analysis Deck</div>
+      <div class="flex"></div>
+      <label class="btn" title="Load data (CSV/JSON)">
+        <input id="file" type="file" accept=".csv,.json" />
+        Load Data
+      </label>
+      <button class="btn" id="exportPdf" title="Export to PDF (Print)">Export PDF</button>
+      <button class="btn" id="exportPng" title="Export the current slide to PNG">PNG</button>
+    </header>
+
+    <main class="deck">
+      <section class="slides" id="slides">
+        <!-- Title -->
+        <article class="slide active" data-kind="title">
+          <div style="margin-top:18px"></div>
+          <h1 id="titleH1">Q2 Earnings Review</h1>
+          <h2 id="subtitleH2">SampleCorp plc — Quarter ended 30 Jun 2025</h2>
+          <div class="grid cols-2" style="margin-top:6px">
+            <div class="card">
+              <h3>Headlines</h3>
+              <ul id="headlineList">
+                <li>Revenue up <span class="chip" id="revYoY">+8.4% YoY</span>, <span class="chip" id="revQoQ">+2.1% QoQ</span></li>
+                <li>Gross margin <span class="chip" id="gmChip">+80 bps YoY</span></li>
+                <li>FCF <span class="chip" id="fcfChip">positive</span>; cash runway stable</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>At a glance</h3>
+              <div class="row kpi"><div class="d">Revenue</div><div class="v" id="kpiRevenue">$1.24B</div><div class="d muted" id="kpiPeriod">Q2'25</div></div>
+              <div class="row kpi"><div class="d">Gross Margin</div><div class="v" id="kpiGM">52.1%</div></div>
+              <div class="row kpi"><div class="d">Op Margin</div><div class="v" id="kpiOM">14.8%</div></div>
+              <div class="row kpi"><div class="d">Cash</div><div class="v" id="kpiCash">$842M</div></div>
+            </div>
+          </div>
+          <div class="footer"><div>Tip: Use ← → or Space to navigate.</div><div class="prog"><div class="bar" id="bar"></div></div></div>
+        </article>
+
+        <!-- Agenda (auto-generated) -->
+        <article class="slide" data-kind="agenda">
+          <h1>Agenda</h1>
+          <ol id="agendaList" class="muted" style="padding-left:22px; margin-top:6px"></ol>
+          <div class="footer"><div class="muted">Sections auto‑generated from deck.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- Revenue trend (SVG) -->
+        <article class="slide" data-kind="revenue">
+          <h1>Revenue Analysis</h1>
+          <div class="grid cols-2">
+            <div class="card">
+              <h3>Revenue Trend</h3>
+              <svg id="revChart" viewBox="0 0 640 320" width="100%" height="300" role="img" aria-label="Revenue trend line chart"></svg>
+            </div>
+            <div class="card">
+              <h3>Takeaways</h3>
+              <ul id="revBullets">
+                <li>Sequential growth driven by core segment.</li>
+                <li>Price/mix improved ASP ~2%.</li>
+                <li>FX headwind ~40 bps.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer"><div class="muted">Source: uploaded filings</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- Margin analysis (SVG) -->
+        <article class="slide" data-kind="margins">
+          <h1>Margin Analysis</h1>
+          <div class="grid cols-2">
+            <div class="card">
+              <h3>Gross & Operating Margin</h3>
+              <svg id="marginChart" viewBox="0 0 640 320" width="100%" height="300" role="img" aria-label="Margins chart"></svg>
+            </div>
+            <div class="card">
+              <h3>Drivers</h3>
+              <ul id="marginBullets">
+                <li>COGS leverage from volume +1.1 pts.</li>
+                <li>Logistics normalization +0.4 pts.</li>
+                <li>Opex reinvestment −0.3 pts.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer"><div class="muted">YoY and QoQ shown.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- Cash & FCF (SVG) -->
+        <article class="slide" data-kind="cash">
+          <h1>Cash & Liquidity</h1>
+          <div class="grid cols-2">
+            <div class="card">
+              <h3>Cash / Net Debt / FCF</h3>
+              <svg id="cashChart" viewBox="0 0 640 320" width="100%" height="300" role="img" aria-label="Cash and FCF"></svg>
+            </div>
+            <div class="card">
+              <h3>Commentary</h3>
+              <ul id="cashBullets">
+                <li>Cash balance stable vs prior quarter.</li>
+                <li>Working capital release aided FCF.</li>
+                <li>Capex within guidance.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer"><div class="muted">Runway & covenant headroom noted.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- Variance Waterfall (SVG) -->
+        <article class="slide" data-kind="waterfall">
+          <h1>Revenue Variance Waterfall</h1>
+          <div class="card">
+            <h3>Q2 vs Q1 Bridge</h3>
+            <svg id="wfChart" viewBox="0 0 900 360" width="100%" height="340" role="img" aria-label="Waterfall variance chart"></svg>
+          </div>
+          <div class="footer"><div class="muted">Categories editable in data pane.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- Risks & Opportunities -->
+        <article class="slide" data-kind="rao">
+          <h1>Risks & Opportunities</h1>
+          <div class="grid cols-2">
+            <div class="card">
+              <h3>Risks</h3>
+              <ul id="riskList" class="editable" contenteditable="true">
+                <li>Macro slowdown affecting volumes</li>
+                <li>Input cost re‑inflation</li>
+                <li>Key supplier concentration</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Opportunities</h3>
+              <ul id="oppList" class="editable" contenteditable="true">
+                <li>New SKU mix shift</li>
+                <li>Price realization in EMEA</li>
+                <li>Automation projects</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer"><div class="muted">Click to edit lists.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+
+        <!-- CFO Notes -->
+        <article class="slide" data-kind="cfo">
+          <h1>CFO Notes — Recommended Actions</h1>
+          <div class="grid cols-2">
+            <div class="card">
+              <h3>Actions</h3>
+              <ul id="actionsList" class="editable" contenteditable="true">
+                <li>Tighten discretionary opex by 3–5% next quarter.</li>
+                <li>Hedge EUR exposure for next 2 quarters.</li>
+                <li>Bring inventory days back to 55 by Q4.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Metrics to Watch</h3>
+              <ul id="watchList" class="editable" contenteditable="true">
+                <li>Bookings to billings ratio</li>
+                <li>GM variance vs. plan (bps)</li>
+                <li>DSO & DIO trending</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer"><div class="muted">Auto‑suggested from data; edit as needed.</div><div class="prog"><div class="bar"></div></div></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <!-- A hidden canvas for PNG export (fulfills the Canvas requirement) -->
+  <canvas id="exportCanvas" width="1600" height="900" style="display:none"></canvas>
+
+  <script>
+  // ------------------------
+  // Minimal data model
+  // ------------------------
+  const sample = {
+    company: "SampleCorp plc",
+    period: "Q2'25",
+    period_end: "2025-06-30",
+    currency: "USD",
+    series: [
+      {period:"Q2'24", revenue:1120, gm:50.1, om:12.2, cash:780, fcf:80, netDebt:1200},
+      {period:"Q3'24", revenue:1136, gm:50.6, om:12.7, cash:800, fcf:60, netDebt:1180},
+      {period:"Q4'24", revenue:1185, gm:51.0, om:13.2, cash:812, fcf:95, netDebt:1150},
+      {period:"Q1'25", revenue:1215, gm:51.5, om:14.1, cash:835, fcf:72, netDebt:1120},
+      {period:"Q2'25", revenue:1240, gm:52.1, om:14.8, cash:842, fcf:98, netDebt:1100}
+    ],
+    waterfall: [
+      {label:"Q1'25", type:"start", value:1215},
+      {label:"Volume", type:"pos", value:22},
+      {label:"Price/Mix", type:"pos", value:9},
+      {label:"FX", type:"neg", value:-5},
+      {label:"Other", type:"neg", value:-1},
+      {label:"Q2'25", type:"end", value:1240}
+    ]
+  };
+
+  let state = JSON.parse(JSON.stringify(sample));
+
+  // ------------------------
+  // Helpers
+  // ------------------------
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const fmtB = n => `$${n.toLocaleString(undefined,{maximumFractionDigits:0})}M`;
+  const fmtPct = n => `${n.toFixed(1)}%`;
+
+  function computeKPIs(d){
+    const s = d.series;
+    const last = s[s.length-1];
+    const prev = s[s.length-2] || last;
+    const yoy = s.length>4 ? ((last.revenue - s[s.length-5].revenue)/s[s.length-5].revenue)*100 : NaN;
+    const qoq = ((last.revenue - prev.revenue)/prev.revenue)*100;
+    $('#titleH1').textContent = `${d.company} — Earnings Review`;
+    $('#subtitleH2').textContent = `${d.period} (ended ${new Date(d.period_end).toLocaleDateString()})`;
+    $('#kpiRevenue').textContent = fmtB(last.revenue);
+    $('#kpiPeriod').textContent = d.period;
+    $('#kpiGM').textContent = fmtPct(last.gm);
+    $('#kpiOM').textContent = fmtPct(last.om);
+    $('#kpiCash').textContent = fmtB(last.cash);
+    $('#revYoY').textContent = isFinite(yoy)? `${yoy.toFixed(1)}% YoY` : '—';
+    $('#revQoQ').textContent = `${qoq.toFixed(1)}% QoQ`;
+    const gmDelta = last.gm - (prev.gm ?? last.gm);
+    $('#gmChip').textContent = `${(gmDelta*1).toFixed(1)} pts QoQ`;
+    $('#fcfChip').textContent = (last.fcf>=0? 'positive' : 'negative');
+
+    // Auto suggestions for CFO slide
+    const actions = [];
+    if (gmDelta < 0) actions.push("Launch throughput & yield taskforce; target +80–120 bps GM");
+    if (qoq < 0) actions.push("Freeze non‑critical hiring until sequential growth resumes");
+    if ((last.cash - prev.cash) < 0) actions.push("Tighten working capital; DSO‑5/DIO‑3 program");
+    if (last.fcf < 0) actions.push("Re‑stage capex; convert to opex where possible");
+    if (!actions.length) actions.push("Maintain disciplined opex; reinvest in high‑ROI GTM");
+    $('#actionsList').innerHTML = actions.map(a=>`<li>${a}</li>`).join("");
+  }
+
+  function lineChart(svg, series, xkey, ykey, {minY,maxY}={}){
+    const el = typeof svg==="string"? $(svg):svg;
+    el.innerHTML='';
+    const W=640,H=320, P=40; // padding
+    const xs = series.map(d=>d[xkey]);
+    const ys = series.map(d=>+d[ykey]);
+    const yMin = minY!=null? minY: Math.min(...ys);
+    const yMax = maxY!=null? maxY: Math.max(...ys);
+    const scaleX = i => P + i*( (W-2*P)/(series.length-1||1) );
+    const scaleY = v => H-P - ( (v - yMin) / (yMax-yMin||1) ) * (H-2*P);
+
+    // axes
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const ax=document.createElementNS(g.namespaceURI,'path');
+    ax.setAttribute('d',`M ${P} ${H-P} H ${W-P} M ${P} ${P} V ${H-P}`);
+    ax.setAttribute('stroke','#2a3b62'); ax.setAttribute('fill','none');
+    g.appendChild(ax);
+
+    // grid
+    for(let i=0;i<4;i++){
+      const y= P + i*( (H-2*P)/3 );
+      const ln=document.createElementNS(g.namespaceURI,'line');
+      ln.setAttribute('x1',P); ln.setAttribute('x2',W-P); ln.setAttribute('y1',y); ln.setAttribute('y2',y);
+      ln.setAttribute('stroke','#1b2746'); ln.setAttribute('stroke-dasharray','3,4');
+      g.appendChild(ln);
+    }
+
+    // path
+    const path=document.createElementNS(g.namespaceURI,'path');
+    const d = ys.map((v,i)=>`${i?'L':'M'} ${scaleX(i)} ${scaleY(v)}`).join(' ');
+    path.setAttribute('d',d);
+    path.setAttribute('stroke','url(#grad1)');
+    path.setAttribute('stroke-width','2.5');
+    path.setAttribute('fill','none');
+    g.appendChild(path);
+
+    // area under
+    const area=document.createElementNS(g.namespaceURI,'path');
+    const d2 = `M ${scaleX(0)} ${H-P} `+ ys.map((v,i)=>`L ${scaleX(i)} ${scaleY(v)}`).join(' ') + ` L ${scaleX(ys.length-1)} ${H-P} Z`;
+    area.setAttribute('d',d2);
+    area.setAttribute('fill','url(#a1)');
+    g.appendChild(area);
+
+    // points
+    ys.forEach((v,i)=>{
+      const c=document.createElementNS(g.namespaceURI,'circle');
+      c.setAttribute('cx',scaleX(i)); c.setAttribute('cy',scaleY(v)); c.setAttribute('r',3.5); c.setAttribute('fill','#cfe0ff');
+      g.appendChild(c);
+      const tx=document.createElementNS(g.namespaceURI,'text');
+      tx.setAttribute('x',scaleX(i)); tx.setAttribute('y',H-P+16); tx.setAttribute('text-anchor','middle'); tx.setAttribute('fill','#9fb0cf'); tx.setAttribute('font-size','12');
+      tx.textContent = xs[i]; g.appendChild(tx);
+    });
+
+    // defs gradients
+    const defs=document.createElementNS(g.namespaceURI,'defs');
+    defs.innerHTML = `
+      <linearGradient id="grad1" x1="0" x2="1"><stop offset="0%" stop-color="#5daeff"/><stop offset="100%" stop-color="#9f7aea"/></linearGradient>
+      <linearGradient id="a1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#5daeff" stop-opacity="0.25"/><stop offset="100%" stop-color="#5daeff" stop-opacity="0"/></linearGradient>
+    `;
+    el.appendChild(defs);
+    el.appendChild(g);
+  }
+
+  function dualLineChart(svg, series, xkey, y1, y2){
+    const el = typeof svg==="string"? $(svg):svg; el.innerHTML='';
+    const W=640,H=320,P=40; const ns='http://www.w3.org/2000/svg';
+    const scaleX = i => P + i*( (W-2*P)/(series.length-1||1) );
+    const scl = v=> H-P - ((v-0)/(100-0))*(H-2*P);
+    const g=document.createElementNS(ns,'g');
+    const ax=document.createElementNS(ns,'path'); ax.setAttribute('d',`M ${P} ${H-P} H ${W-P} M ${P} ${P} V ${H-P}`); ax.setAttribute('stroke','#2a3b62'); ax.setAttribute('fill','none'); g.appendChild(ax);
+    const mk=(key, id, colorGrad)=>{
+      const vals = series.map(d=>+d[key]);
+      const p=document.createElementNS(ns,'path'); p.setAttribute('d', vals.map((v,i)=>`${i?'L':'M'} ${scaleX(i)} ${scl(v)}`).join(' ')); p.setAttribute('stroke',`url(#${colorGrad})`); p.setAttribute('stroke-width','2.5'); p.setAttribute('fill','none'); g.appendChild(p);
+    }
+    const defs=document.createElementNS(ns,'defs');
+    defs.innerHTML = `
+      <linearGradient id="g1" x1="0" x2="1"><stop offset="0%" stop-color="#5daeff"/><stop offset="100%" stop-color="#9f7aea"/></linearGradient>
+      <linearGradient id="g2" x1="0" x2="1"><stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient>
+    `;
+    el.appendChild(defs);
+    mk(y1,'g1','g1'); mk(y2,'g2','g2');
+    series.forEach((d,i)=>{
+      const tx=document.createElementNS(ns,'text'); tx.setAttribute('x',scaleX(i)); tx.setAttribute('y',H-P+16); tx.setAttribute('text-anchor','middle'); tx.setAttribute('fill','#9fb0cf'); tx.setAttribute('font-size','12'); tx.textContent = d[xkey]; g.appendChild(tx);
+    });
+    // legend
+    const lg=document.createElementNS(ns,'g');
+    const l1=document.createElementNS(ns,'rect'); l1.setAttribute('x',W-210); l1.setAttribute('y',18); l1.setAttribute('width',14); l1.setAttribute('height',4); l1.setAttribute('fill','url(#g1)'); lg.appendChild(l1);
+    const t1=document.createElementNS(ns,'text'); t1.setAttribute('x',W-190); t1.setAttribute('y',22); t1.setAttribute('fill','#cfe0ff'); t1.setAttribute('font-size','12'); t1.textContent='Gross Margin'; lg.appendChild(t1);
+    const l2=document.createElementNS(ns,'rect'); l2.setAttribute('x',W-110); l2.setAttribute('y',18); l2.setAttribute('width',14); l2.setAttribute('height',4); l2.setAttribute('fill','url(#g2)'); lg.appendChild(l2);
+    const t2=document.createElementNS(ns,'text'); t2.setAttribute('x',W-90); t2.setAttribute('y',22); t2.setAttribute('fill','#cfe0ff'); t2.setAttribute('font-size','12'); t2.textContent='Op Margin'; lg.appendChild(t2);
+    g.appendChild(lg);
+    el.appendChild(g);
+  }
+
+  function barsChart(svg, series){
+    const el = typeof svg==="string"? $(svg):svg; el.innerHTML='';
+    const ns='http://www.w3.org/2000/svg'; const W=640,H=320,P=40;
+    const max = Math.max(...series.map(d=>Math.max(d.cash, d.fcf, d.netDebt)));
+    const scl = v => H-P - (v/max)*(H-2*P);
+    const bw = (W-2*P)/series.length * .6;
+    const g=document.createElementNS(ns,'g');
+    // axes
+    const ax=document.createElementNS(ns,'path'); ax.setAttribute('d',`M ${P} ${H-P} H ${W-P} M ${P} ${P} V ${H-P}`); ax.setAttribute('stroke','#2a3b62'); ax.setAttribute('fill','none'); g.appendChild(ax);
+    series.forEach((d,i)=>{
+      const x = P + i*((W-2*P)/series.length) + 10; const cx = x;
+      // cash
+      const r1=document.createElementNS(ns,'rect'); r1.setAttribute('x',cx); r1.setAttribute('y',scl(d.cash)); r1.setAttribute('width',bw); r1.setAttribute('height', H-P - scl(d.cash)); r1.setAttribute('fill','#5daeff'); g.appendChild(r1);
+      // fcf
+      const r2=document.createElementNS(ns,'rect'); r2.setAttribute('x',cx+bw+6); r2.setAttribute('y', d.fcf>=0? scl(d.fcf): H-P); r2.setAttribute('width',bw*.6); r2.setAttribute('height', Math.abs(H-P - scl(Math.max(d.fcf,0)))); r2.setAttribute('fill', d.fcf>=0? '#4ade80':'#f87171'); g.appendChild(r2);
+      // net debt (as line marker)
+      const ln=document.createElementNS(ns,'line'); ln.setAttribute('x1',cx-6); ln.setAttribute('x2',cx+bw*1.6+6); ln.setAttribute('y1',scl(d.netDebt)); ln.setAttribute('y2',scl(d.netDebt)); ln.setAttribute('stroke','#9f7aea'); ln.setAttribute('stroke-width','2'); g.appendChild(ln);
+
+      const tx=document.createElementNS(ns,'text'); tx.setAttribute('x',cx+bw*.5); tx.setAttribute('y',H-P+16); tx.setAttribute('text-anchor','middle'); tx.setAttribute('fill','#9fb0cf'); tx.setAttribute('font-size','12'); tx.textContent=d.period; g.appendChild(tx);
+    });
+    el.appendChild(g);
+  }
+
+  function waterfall(svg, items){
+    const el = typeof svg==="string"? $(svg):svg; el.innerHTML=''; const ns='http://www.w3.org/2000/svg';
+    const W=900,H=360,P=48; const g=document.createElementNS(ns,'g');
+    const vals = items.map(d=>Math.abs(d.value)); const max = Math.max(...vals, items.find(i=>i.type==='end')?.value||0);
+    const scl = v => H-P - (v/max)*(H-2*P);
+    let cur = items[0].value; const bw = (W-2*P)/items.length * .6;
+
+    // axes
+    const ax=document.createElementNS(ns,'path'); ax.setAttribute('d',`M ${P} ${H-P} H ${W-P} M ${P} ${P} V ${H-P}`); ax.setAttribute('stroke','#2a3b62'); ax.setAttribute('fill','none'); g.appendChild(ax);
+
+    items.forEach((d,i)=>{
+      const x = P + i*((W-2*P)/items.length);
+      if(d.type==='start'){
+        const r=document.createElementNS(ns,'rect'); r.setAttribute('x',x); r.setAttribute('y',scl(d.value)); r.setAttribute('width',bw); r.setAttribute('height', H-P - scl(d.value)); r.setAttribute('fill','#9fb0cf'); g.appendChild(r);
+        cur = d.value;
+      } else if(d.type==='end'){
+        const r=document.createElementNS(ns,'rect'); r.setAttribute('x',x); r.setAttribute('y',scl(d.value)); r.setAttribute('width',bw); r.setAttribute('height', H-P - scl(d.value)); r.setAttribute('fill','#9fb0cf'); g.appendChild(r);
+      } else {
+        const y0 = scl(Math.max(cur, cur + d.value));
+        const y1 = scl(Math.min(cur, cur + d.value));
+        const r=document.createElementNS(ns,'rect'); r.setAttribute('x',x); r.setAttribute('y',y0); r.setAttribute('width',bw); r.setAttribute('height', Math.max(8, y1 - y0)); r.setAttribute('fill', d.value>=0? '#4ade80':'#f87171'); g.appendChild(r);
+        // connector
+        const ln=document.createElementNS(ns,'line'); ln.setAttribute('x1',x+bw); ln.setAttribute('x2',x+(W-2*P)/items.length); ln.setAttribute('y1',scl(cur + d.value)); ln.setAttribute('y2',scl(cur + d.value)); ln.setAttribute('stroke','#33456f'); ln.setAttribute('stroke-dasharray','4,4'); g.appendChild(ln);
+        cur += d.value;
+      }
+      const tx=document.createElementNS(ns,'text'); tx.setAttribute('x',x+bw/2); tx.setAttribute('y',H-P+16); tx.setAttribute('text-anchor','middle'); tx.setAttribute('fill','#9fb0cf'); tx.setAttribute('font-size','12'); tx.textContent=d.label; g.appendChild(tx);
+    });
+    el.appendChild(g);
+  }
+
+  // ------------------------
+  // Navigation & agenda
+  // ------------------------
+  const slides = $$('#slides .slide');
+  function activate(i){
+    slides.forEach((s,j)=> s.classList.toggle('active', j===i));
+    const pct = ((i+1)/slides.length)*100; $$('#slides .bar').forEach(b=> b.style.width = pct+'%');
+    location.hash = '#'+(i+1);
+    current = i;
+  }
+  let current = 0;
+  function next(){ activate(Math.min(current+1, slides.length-1)); }
+  function prev(){ activate(Math.max(current-1, 0)); }
+  window.addEventListener('keydown', e=>{
+    if(['ArrowRight','PageDown',' '].includes(e.key)) next();
+    if(['ArrowLeft','PageUp','Backspace'].includes(e.key)) prev();
+    if(e.key==='Home') activate(0);
+    if(e.key==='End') activate(slides.length-1);
+  });
+  window.addEventListener('hashchange', ()=>{
+    const n = Math.max(1, parseInt(location.hash.replace('#',''))||1); activate(Math.min(n-1, slides.length-1));
+  });
+  // Agenda build
+  function buildAgenda(){
+    const list = $('#agendaList');
+    const items = slides.map(s=> s.querySelector('h1')?.textContent).filter(Boolean);
+    list.innerHTML = items.map((t,i)=>`<li>${i+1}. ${t}</li>`).join('');
+  }
+
+  // ------------------------
+  // Render all charts
+  // ------------------------
+  function renderAll(){
+    computeKPIs(state);
+    lineChart('#revChart', state.series, 'period', 'revenue');
+    dualLineChart('#marginChart', state.series, 'period', 'gm', 'om');
+    barsChart('#cashChart', state.series);
+    waterfall('#wfChart', state.waterfall);
+    buildAgenda();
+  }
+  renderAll();
+
+  // ------------------------
+  // File loading (CSV or JSON)
+  // ------------------------
+  const file = $('#file');
+  file.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const text = await f.text();
+    try{
+      if(f.name.endsWith('.json')){
+        const obj = JSON.parse(text);
+        state = Object.assign({}, state, obj); // shallow merge
+      } else {
+        // very small CSV parser expecting header: period,revenue,gm,om,cash,fcf,netDebt
+        const rows = text.trim().split(/\r?\n/).map(r=> r.split(',').map(c=>c.trim()));
+        const hdr = rows.shift().map(h=>h.toLowerCase());
+        const idx = name => hdr.indexOf(name);
+        const s=[]; rows.forEach(r=>{
+          s.push({
+            period: r[idx('period')],
+            revenue: +r[idx('revenue')],
+            gm: +r[idx('gm')],
+            om: +r[idx('om')],
+            cash: +r[idx('cash')],
+            fcf: +r[idx('fcf')],
+            netDebt: +r[idx('netdebt')]
+          });
+        });
+        state.series = s;
+      }
+      renderAll();
+      alert('Data loaded ✔');
+    }catch(err){
+      console.error(err); alert('Could not parse file. Expect JSON schema or CSV with header: period,revenue,gm,om,cash,fcf,netDebt');
+    } finally { file.value=''; }
+  });
+
+  // ------------------------
+  // Export: PDF & PNG
+  // ------------------------
+  $('#exportPdf').addEventListener('click', ()=>{ window.print(); });
+
+  $('#exportPng').addEventListener('click', ()=>{
+    // Export the active slide to PNG by serializing its HTML to SVG foreignObject, then drawing to Canvas
+    const slide = slides[current];
+    const rect = slide.getBoundingClientRect();
+    const scale = 2; // hi‑dpi
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${rect.width*scale}' height='${rect.height*scale}'>`+
+                `<foreignObject width='100%' height='100%'>`+
+                new XMLSerializer().serializeToString(slide) +
+                `</foreignObject></svg>`;
+    const url = URL.createObjectURL(new Blob([svg], {type:'image/svg+xml'}));
+    const img = new Image();
+    img.onload = () =>{
+      const c = document.getElementById('exportCanvas');
+      c.width = rect.width*scale; c.height = rect.height*scale;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = getComputedStyle(document.body).backgroundColor || '#0b0f16';
+      ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(img,0,0);
+      URL.revokeObjectURL(url);
+      const a = document.createElement('a');
+      a.download = `slide-${current+1}.png`;
+      a.href = c.toDataURL('image/png');
+      a.click();
+    };
+    img.onerror = ()=>{
+      alert('PNG export failed — your browser may block foreignObject. Try print‑to‑PDF instead.');
+      URL.revokeObjectURL(url);
+    }
+    img.src = url;
+  });
+
+  // Jump to hash on load
+  if(location.hash){ const n=parseInt(location.hash.replace('#','')); if(n>0) activate(Math.min(n-1, slides.length-1)); }
+  </script>
+</body>
+</html>
