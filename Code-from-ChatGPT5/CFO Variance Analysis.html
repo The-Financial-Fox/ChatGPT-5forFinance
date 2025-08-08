@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>CFO Variance Analysis – Q1 2025</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/black.css" id="theme">
+  <style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .kpi { padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.06); text-align: center; }
+    .good { outline: 2px solid #2ecc71; }
+    .bad { outline: 2px solid #e74c3c; }
+    .small { font-size: 0.8rem; opacity: 0.8; }
+    canvas { max-height: 440px; }
+    ul.tight > li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+
+    <section>
+      <h2>CFO Variance Analysis</h2>
+      <h4>Q1 2025 (Jan–Mar)</h4>
+      <p class="small">Prepared for leadership review</p>
+    </section>
+
+    <section>
+      <h3>Executive summary</h3>
+      <ul class="tight" id="summaryList"></ul>
+    </section>
+
+    <section>
+      <h3>KPIs – Monthly</h3>
+      <div class="kpi-grid">
+        <div class="kpi {{'good' if summary['Gross Margin']>0 else 'bad'}}">
+          <div>Gross Margin</div>
+          <div><strong>$-11,205</strong></div>
+          <div class="small">-2.0% of Revenue</div>
+        </div>
+        <div class="kpi bad">
+          <div>EBITDA</div>
+          <div><strong>$-403,348</strong></div>
+          <div class="small">-73.4% of Revenue</div>
+        </div>
+        <div class="kpi {{'good' if totals.loc[totals['Category']=='CapEx','Variance ($)'].item()<=0 else 'bad'}}">
+          <div>CapEx vs Budget</div>
+          <div><strong>$-7,986</strong></div>
+          <div class="small">Negative = under budget</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Revenue, COGS, OPEX</h3>
+      <canvas id="pnlChart"></canvas>
+    </section>
+
+    <section>
+      <h3>Gross Margin & EBITDA</h3>
+      <canvas id="profitChart"></canvas>
+    </section>
+
+    <section>
+      <h3>Budget vs Actual (Quarter)</h3>
+      <canvas id="budgetActualChart"></canvas>
+    </section>
+
+    <section>
+      <h3>Top Variance Drivers</h3>
+      <div style="display:flex; gap:36px; justify-content:center;">
+        <div>
+          <h4>Favorable</h4>
+          <ul id="topPos" class="tight"></ul>
+        </div>
+        <div>
+          <h4>Unfavorable</h4>
+          <ul id="topNeg" class="tight"></ul>
+        </div>
+      </div>
+      <p class="small">Unfavorable numbers are negative versus budget.</p>
+    </section>
+
+    <section>
+      <h3>Actions & Focus</h3>
+      <ul class="tight">
+        <li>Renegotiate third‑party API and hosting commitments (largest COGS overruns).</li>
+        <li>Immediate margin restoration plan: pricing review for MRR; tighten discounting.</li>
+        <li>Pause discretionary OPEX growth; re-sequence campaigns with low ROI.</li>
+        <li>Maintain CapEx discipline; ensure deployments are tied to near‑term payback.</li>
+      </ul>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+  const DATA = {"labels": ["Jan 2025", "Feb 2025", "Mar 2025"], "revenue": [181521, 141313, 226597], "cogs": [127531, 154449, 278656], "opex": [115142, 156356, 120645], "gm": [53990, -13136, -52059], "ebitda": [-61152, -169492, -172704], "categoryTotals": [{"Category": "COGS", "Actual ($)": 560636, "Budgeted ($)": 517883, "Variance ($)": 42753}, {"Category": "CapEx", "Actual ($)": 354236, "Budgeted ($)": 362222, "Variance ($)": -7986}, {"Category": "OPEX", "Actual ($)": 392143, "Budgeted ($)": 399840, "Variance ($)": -7697}, {"Category": "Revenue", "Actual ($)": 549431, "Budgeted ($)": 538523, "Variance ($)": 10908}], "summaryLines": ["Revenue: $549,431 (Budget $538,523, Var $10,908)", "COGS: $560,636 (Var $42,753)", "OPEX: $392,143 (Var $-7,697)", "Gross Margin: $-11,205 (-2.0%)", "EBITDA: $-403,348 (-73.4%)", "CapEx: $354,236 (Var $-7,986)"], "topPos": ["COGS – Third-party APIs: $19,689", "COGS – Hosting: $12,050", "Revenue – One-time Fees: $11,449", "COGS – Customer Support: $11,014", "Revenue – Upsells: $6,994"], "topNeg": ["Revenue – MRR: $-7,535", "OPEX – Sales & Marketing: $-6,001", "CapEx – Server Investments: $-4,038", "CapEx – Software Purchases: $-3,948", "OPEX – R&D Salaries: $-1,159"]};
+  Reveal.initialize({ hash: true, slideNumber: true });
+
+  function money(n) {
+    return new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 }).format(n);
+  }
+
+  // Exec summary bullets
+  const summary = document.getElementById('summaryList');
+  DATA.summaryLines.forEach(s => {
+    const li = document.createElement('li');
+    li.textContent = s;
+    summary.appendChild(li);
+  });
+
+  // P&L line chart
+  new Chart(document.getElementById('pnlChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: DATA.labels,
+      datasets: [
+        { label: 'Revenue', data: DATA.revenue },
+        { label: 'COGS', data: DATA.cogs },
+        { label: 'OPEX', data: DATA.opex },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } },
+        legend: { position: 'bottom' }
+      },
+      scales: {
+        y: { ticks: { callback: (v)=> money(v) } }
+      }
+    }
+  });
+
+  // Profit bar chart
+  new Chart(document.getElementById('profitChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: DATA.labels,
+      datasets: [
+        { label: 'Gross Margin', data: DATA.gm },
+        { label: 'EBITDA', data: DATA.ebitda },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } },
+        legend: { position: 'bottom' }
+      },
+      scales: {
+        y: { ticks: { callback: (v)=> money(v) } }
+      }
+    }
+  });
+
+  // Budget vs Actual stacked bars by category
+  const cats = DATA.categoryTotals.map(r => r['Category']);
+  const actuals = DATA.categoryTotals.map(r => r['Actual ($)']);
+  const budgets = DATA.categoryTotals.map(r => r['Budgeted ($)']);
+  new Chart(document.getElementById('budgetActualChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: cats,
+      datasets: [
+        { label: 'Budget', data: budgets },
+        { label: 'Actual', data: actuals },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } },
+        legend: { position: 'bottom' }
+      },
+      scales: {
+        y: { ticks: { callback: (v)=> money(v) } }
+      }
+    }
+  });
+
+  // Top drivers lists
+  const pos = document.getElementById('topPos');
+  DATA.topPos.forEach(s => { const li = document.createElement('li'); li.textContent = s; pos.appendChild(li); });
+  const neg = document.getElementById('topNeg');
+  DATA.topNeg.forEach(s => { const li = document.createElement('li'); li.textContent = s; neg.appendChild(li); });
+
+</script>
+</body>
+</html>
